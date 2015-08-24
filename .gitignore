@@ -1,0 +1,49 @@
+### Specific files that we do not want to contaminate the git repo
+hosts
+group_vars/all/secret
+envs/
+!envs/vagrant.secret
+!envs/vagrant.config
+!envs/vagrant.hosts
+!envs/sample.secret
+!envs/sample.config
+!envs/sample.hosts
+
+## do not include the GHost tarball
+packages/rhel6.50_ghost.tar.xz
+
+### do not add the RPMs to git
+*.rpm
+
+### do not add the Zips to git
+*.zip
+
+### do not add bin files
+*.bin
+
+### Ansible filed runs
+*.retry
+.ansible/
+
+### SSH keys
+.ssh/
+.rnd
+
+### Vagrant
+.vagrant/
+
+### Git
+.gitconfig
+
+### Bash
+.bash_history
+.bash_logout
+.bashrc
+.bash_profile
+
+### Vim swp files #
+*.swo
+*.swp
+*~
+.viminfo
+.vim/

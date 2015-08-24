@@ -1,0 +1,272 @@
+---
+# FILE: template_prep.yml
+#
+# This playbook prepares a server to be turned into a template based on this
+# blog post by Bob Plankers: https://lonesysadmin.net/2013/03/26/preparing-linux-template-vms/
+
+- hosts: template_vm
+  remote_user: root
+  sudo: yes
+#  no_log: True
+  tasks:
+    - name: Stop rsyslog service
+      service: name=rsyslog state=stopped
+
+    - name: Stop auditd service (ignoring errors if auditd isn't installed)
+      service: name=auditd state=stopped
+      when: (ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6) or ansible_os_family == "Debian"
+      ignore_errors: yes
+
+    - name: Stop auditd service
+      command: /usr/libexec/initscripts/legacy-actions/auditd/stop
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+
+    - name: Backup /etc/yum.conf
+      shell: cp -pf /etc/yum.conf /root/yum.conf.backup
+      args:
+          creates: /root/yum.conf.backup
+      when: (yum.proxy is defined or yum.disable_cache is defined) and ansible_os_family == "RedHat"
+
+    - name: Disable proxy caching for yum
+      lineinfile: dest=/etc/yum.conf regexp="http_caching=none" line="http_caching=none" state=present
+      when: yum.disable_cache is defined and ansible_os_family == "RedHat"
+
+    - name: CentOS/RHEL - Add Proxy to yum.conf
+      lineinfile: dest=/etc/yum.conf regexp="proxy=" line="proxy={{ yum.proxy }}" state=present
+      when: yum.proxy is defined and ansible_os_family == "RedHat"
+
+    - name: Backup /etc/apt/apt.conf
+      shell: cp -pf /etc/apt/apt.conf /root/apt.conf.backup
+      args:
+          creates: /root/apt.conf.backup
+      when: apt.proxy is defined and ansible_os_family == "Debian"
+
+    - name: Ubuntu - Add Proxy to apt.conf
+      lineinfile: dest=/etc/apt/apt.conf regexp='Acquire::http::Proxy' line='Acquire::http::Proxy "{{ apt.proxy }}";' state=present create=yes owner=root group=root mode=0644
+      when: apt.proxy is defined and ansible_os_family == "Debian"
+
+    - name: Copy over vmware.repo
+      copy: src=files/vmware.repo dest=/etc/yum.repos.d/vmware.repo owner=root group=root mode=0644
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Ensure VMware tools is installed and the latest version
+      yum: name=vmware-tools-esx-nox state=latest
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Ensure open-vm-tools is installed and the latest version
+      yum: name=open-vm-tools state=latest
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+
+    - name: Ensure open-vm-tools is installed and the latest version
+      apt: name=open-vm-tools state=latest
+      when: install_vmwaretools is defined and ansible_os_family == "Debian"
+
+    - name: Install yum-utils so we can clean up old kernels
+      yum: name=yum-utils state=installed
+      when: ansible_os_family == "RedHat"
+
+    - name: Install BC
+      yum: name=bc state=installed
+      when: run_zero_out_disk is defined and ansible_os_family == "RedHat"
+
+    - name: Install BC
+      apt: name=bc state=installed
+      when: ansible_os_family == "Debian"
+
+    - name: Copy over zero-free-space.sh script
+      copy: src=files/zero-free-space.sh dest=/root/zero-free-space.sh owner=root group=root mode=0770
+      when: run_zero_out_disk is defined
+
+    - name: Ensure vm.swappiness is set
+      sysctl: name=vm.swappiness value='0' state=present ignoreerrors=yes
+
+    - name: Disable sysstat (ignoring errors if sysstat isn't installed)
+      service: name=sysstat enabled=no
+      when: disable_sysstat is defined
+      ignore_errors: yes
+
+    - name: Disable the cron.d/sysstat file
+      copy: src=files/sysstat.crond dest=/etc/cron.d/sysstat owner=root group=root mode=0644
+      when: disable_sysstat is defined
+
+    - name: Set elevator=noop in grub.conf if elevator=anticipatory|deadline|cfq
+      replace: dest=/boot/grub/grub.conf regexp='^(.*?)\s*(?:elevator=(?:anticipatory|deadline|cfq)) *\s(.*)' replace='\1 elevator=noop \2'
+      # lineinfile: dest=/boot/grub/grub.conf backrefs=yes state=present regexp='^^(.*?)\s*(?:KEYBOARDTYPE=(?:pc|mac)) *\s(.*)' line='\1 elevator=noop \2'
+      when: elevator_noop is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Set elevator=noop in grub.conf if elevator= is not set
+      replace: dest=/boot/grub/grub.conf regexp='(^\s*kernel((?!elevator=noop).)*$)' replace='\1 elevator=noop'
+      when: elevator_noop is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Set elevator=noop in grub.cfg
+      command: /usr/sbin/grubby --update-kernel=ALL --args="elevator=noop"
+      when: elevator_noop is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+
+    - name: Set elevtor=noop in
+      lineinfile: dest=/etc/default/grub regexp='GRUB_CMDLINE_LINUX_DEFAULT=' line='GRUB_CMDLINE_LINUX_DEFAULT="elevator=noop"'
+      when: elevator_noop is defined and ansible_os_family == "Debian"
+
+    - name: Set HOSTNAME/FQDN
+      hostname: name={{ inventory_hostname }}.{{ domain }}
+
+    - name: Replace ifcfg-eth0 file
+      copy: src=files/ifcfg-eth0 dest=/etc/sysconfig/network-scripts/ifcfg-eth0 owner=root group=root mode=0644
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Replace ifcfg-ens160 file
+      copy: src=files/ifcfg-ens160 dest=/etc/sysconfig/network-scripts/ifcfg-ens160 owner=root group=root mode=0644
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+
+    - name: Replace interfaces file
+      copy: src=files/interfaces dest=/etc/network owner=root group=root mode=0644
+      when: ansible_os_family == "Debian"
+
+    - name: Cleanup old kernels
+      shell: /usr/bin/package-cleanup --oldkernels --count=1
+      when: ansible_os_family == "RedHat"
+
+    - name: Clean out Yum's cache
+      shell: /usr/bin/yum clean all
+      when: ansible_os_family == "RedHat"
+
+    - name: Check if packages need to be autoremoved
+      shell: apt-get --dry-run autoremove | grep "to remove" | sed "s/^[0-9]\+ upgraded, [0-9]\+ newly installed, \([0-9]\+\) to remove and [0-9]\+ not upgraded\.$/\1/"
+      register: check_autoremove
+      changed_when: check_autoremove.stdout != "0"
+      when: ansible_os_family == "Debian"
+
+    - name: Autoremove unused packages
+      command: apt-get -y autoremove
+      when: ansible_os_family == "Debian" and check_autoremove.changed
+
+    - name: Clean out Apt's cache
+      command: apt-get clean
+      when: ansible_os_family == "Debian"
+
+    - name: Force a logrotate
+      shell: /usr/sbin/logrotate -f /etc/logrotate.conf
+      register: logrotate_out
+      failed_when: logrotate_out.rc > 1
+
+    - name: Cleanup rotated logs
+      shell: /bin/rm -f /var/log/*-???????? /var/log/*.gz
+      when: ansible_os_family == "RedHat"
+
+    - name: Cleanup rotated logs
+      shell: /bin/rm -f /var/log/*.gz /var/log/*.1 /var/log/*.0 /var/log/upstart/*.gz /var/log/apt/*.gz
+      when: ansible_os_family == "Debian"
+
+    - name: Cleanup anaconda logs
+      shell: /bin/rm -f /var/log/anaconda*
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+
+    - name: Cleanup anaconda logs
+      shell: /bin/rm -f /var/log/anaconda/*
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+
+    - name: Cleanup installer logs
+      shell: /bin/rm -rf /var/log/installer/*
+      when: ansible_os_family == "Debian"
+
+    - name: Cleanup old dmesg
+      shell: /bin/rm -f /var/log/dmesg.old
+
+    - name: Cleanup old dmesg
+      file: path=/var/log/dmesg.old state=absent
+
+    - name: Truncate audit.log
+      shell: /bin/cat /dev/null > /var/log/audit/audit.log
+      when: ansible_os_family == "RedHat"
+
+    - name: Truncate wtmp
+      shell: /bin/cat /dev/null > /var/log/wtmp
+
+    - name: Truncate btmp
+      shell: /bin/cat /dev/null > /var/log/btmp
+
+    - name: Truncate lastlog
+      shell: /bin/cat /dev/null > /var/log/lastlog
+
+    - name: Truncate boot.log
+      shell: /bin/cat /dev/null > /var/log/boot.log
+      when: ansible_os_family == "Debian"
+
+    - name: Truncate bootstrap.log
+      shell: /bin/cat /dev/null > /var/log/bootstrap.log
+      when: ansible_os_family == "Debian"
+
+    - name: Truncate udev
+      shell: /bin/cat /dev/null > /var/log/udev
+      when: ansible_os_family == "Debian"
+
+    - name: Truncate faillog
+      shell: /bin/cat /dev/null > /var/log/faillog
+      when: ansible_os_family == "Debian"
+
+    - name: Remove udev persistent device rules
+      shell: /bin/rm -f /etc/udev/rules.d/70*
+
+    - name: Clean out temp dirs
+      shell: /bin/rm -rf /tmp/*
+
+    - name: Clean out /var/tmp
+      shell: /bin/rm -rf /var/tmp/*
+
+    - name: Remove old DHCP files
+      shell: /bin/rm -rf /var/lib/dhclient/*
+      when: ansible_os_family == "RedHat"
+
+    - name: Remove old DHCP files
+      shell: /bin/rm -rf /var/lib/dhcp/dhclient.* /var/lib/ntp/ntp.conf.dhcp
+      when: ansible_os_family == "Debian"
+
+    - name: Remove files in root's home
+      shell: /bin/rm -f ~root/.bash_history
+
+    - name: Remove files in root's home
+      shell: /bin/rm -f ~{{ ansible_ssh_user }}/.bash_history
+      when: ansible_os_family == "Debian"
+
+    - name: Remove anaconda-ks.cfg
+      shell: /bin/rm -f ~root/anaconda-ks.cfg
+      when: ansible_os_family == "RedHat"
+
+    - name: Replace /etc/yum.conf with backups we made earlier
+      shell: cp -pf /root/yum.conf.backup /etc/yum.conf
+      when: (yum.proxy is defined or yum.disable_cache is defined) and ansible_os_family == "RedHat"
+
+    - name: Replace /etc/apt/apt.conf with backups we made earlier
+      shell: cp -pf /root/apt.conf.backup /etc/apt/apt.conf
+      when: apt.proxy is defined and ansible_os_family == "Debian"
+
+    - name: Remove /root/yum.conf.backup
+      file: path=/root/yum.conf.backup state=absent
+
+    - name: Run the zero-free-space.sh script
+      shell: /root/zero-free-space.sh
+      when: run_zero_out_disk is defined
+
+    - name: Remove the zero-free-space.sh script
+      file: path=/root/zero-free-space.sh state=absent
+
+    - name: backup rc.local
+      command: cp /etc/rc.local /etc/rc.local.orig
+      when: ansible_os_family == "Debian"
+
+    - name: Recreate ssh keys on next boot
+      command: sed -i '$ i dpkg-reconfigure openssh-server\nmv /etc/rc.local.orig /etc/rc.local' /etc/rc.local
+      when: ansible_os_family == "Debian"
+
+    # - name: Remove root's ssh history
+    #   shell: /bin/rm -rf ~root/.ssh/
+
+    # - name: Remove root's ssh history
+    #   shell: /bin/rm -rf ~{{ ansible_ssh_user }}/.ssh/
+    #   when: ansible_os_family == "Debian"
+
+    # - name: Remove ssh host keys
+    #   shell: /bin/rm -f /etc/ssh/*key*
+
+    - name: Shutdown VM
+      shell: nohup bash -c "sleep 2 && shutdown -h now" &
+      when: disable_shutdown is not defined

@@ -1,0 +1,14 @@
+DEVICE=eth0
+TYPE=Ethernet
+ONBOOT=yes
+NM_CONTROLLED=no
+IPV6INIT="no"
+
+# Comment out to setup the static address below
+BOOTPROTO=dhcp
+
+# Uncomment and adjust the IPs accordingly
+#BOOTPROTO="none"
+#IPADDR=x.x.x.x
+#NETMASK=x.x.x.x
+#GATEWAY=x.x.x.x
