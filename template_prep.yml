@@ -66,6 +66,10 @@
       yum: name=yum-utils state=installed
       when: ansible_os_family == "RedHat"
 
+    - name: Copy over zero-free-space.sh script
+      copy: src=files/zero-free-space.sh dest=/root/zero-free-space.sh owner=root group=root mode=0770
+      when: run_zero_out_disk is defined
+
     - name: Install BC
       yum: name=bc state=installed
       when: run_zero_out_disk is defined and ansible_os_family == "RedHat"
@@ -73,10 +77,6 @@
     - name: Install BC
       apt: name=bc state=installed
       when: ansible_os_family == "Debian"
-
-    - name: Copy over zero-free-space.sh script
-      copy: src=files/zero-free-space.sh dest=/root/zero-free-space.sh owner=root group=root mode=0770
-      when: run_zero_out_disk is defined
 
     - name: Ensure vm.swappiness is set
       sysctl: name=vm.swappiness value='0' state=present ignoreerrors=yes
@@ -246,6 +246,7 @@
     - name: Run the zero-free-space.sh script
       shell: /root/zero-free-space.sh
       when: run_zero_out_disk is defined
+      register: zero_out
 
     - name: Remove the zero-free-space.sh script
       file: path=/root/zero-free-space.sh state=absent
@@ -256,18 +257,20 @@
 
     - name: Recreate ssh keys on next boot
       command: sed -i '$ i dpkg-reconfigure openssh-server\nmv /etc/rc.local.orig /etc/rc.local' /etc/rc.local
-      when: ansible_os_family == "Debian"
+      when: ansible_os_family == "Debian" and disable_clear_ssh_keys is not defined
 
-    # - name: Remove root's ssh history
-    #   shell: /bin/rm -rf ~root/.ssh/
+    - name: Remove root's ssh history
+      shell: /bin/rm -rf ~root/.ssh/
+      when: disable_clear_ssh_keys is not defined
 
-    # - name: Remove root's ssh history
-    #   shell: /bin/rm -rf ~{{ ansible_ssh_user }}/.ssh/
-    #   when: ansible_os_family == "Debian"
+    - name: Remove ubuntu primary user's ssh history
+      shell: /bin/rm -rf ~{{ ansible_ssh_user }}/.ssh/
+      when: ansible_os_family == "Debian" and disable_clear_ssh_keys is not defined
 
-    # - name: Remove ssh host keys
-    #   shell: /bin/rm -f /etc/ssh/*key*
+    - name: Remove ssh host keys but do not shutdown
+      shell: /bin/rm -f /etc/ssh/*key*
+      when: disable_shutdown is defined and disable_clear_ssh_keys is not defined
 
-    - name: Shutdown VM
-      shell: nohup bash -c "sleep 2 && shutdown -h now" &
-      when: disable_shutdown is not defined
+    - name: Remove ssh host keys and shutdown VM
+      shell: nohup bash -c "/bin/rm -f /etc/ssh/*key*; sleep 2 && shutdown -h now" &
+      when: disable_shutdown is not defined and disable_clear_ssh_keys is not defined
