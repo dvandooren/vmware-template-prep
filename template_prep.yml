@@ -12,14 +12,20 @@
     - name: Stop rsyslog service
       service: name=rsyslog state=stopped
 
-    - name: Stop auditd service (ignoring errors if auditd isn't installed)
+    - name: Stop auditd service
       service: name=auditd state=stopped
       when: (ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6) or ansible_os_family == "Debian"
-      ignore_errors: yes
+      register: auditd_service
+      failed_when: auditd_service.failed == True and auditd_service.msg is defined and 'no service' not in auditd_service.msg
+      tags: test
+
+    - debug: var=auditd_service
+      tags: test
 
     - name: Stop auditd service
       command: /usr/libexec/initscripts/legacy-actions/auditd/stop
       when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+      tags: test
 
     - name: Backup /etc/yum.conf
       shell: cp -pf /etc/yum.conf /root/yum.conf.backup
@@ -80,18 +86,18 @@
     - name: Ensure vm.swappiness is set
       sysctl: name=vm.swappiness value='0' state=present ignoreerrors=yes
 
-    - name: Disable sysstat (ignoring errors if sysstat isn't installed)
+    - name: Disable sysstat
       service: name=sysstat enabled=no
       when: disable_sysstat is defined
-      ignore_errors: yes
+      register: sysstat_service
+      failed_when: sysstat_service.failed == True and sysstat_service.msg is defined and 'no service' not in sysstat_service.msg
 
     - name: Disable the cron.d/sysstat file
       copy: src=files/sysstat.crond dest=/etc/cron.d/sysstat owner=root group=root mode=0644
-      when: disable_sysstat is defined
+      when: disable_sysstat is defined and sysstat_service.changed is defined and sysstat_service.changed == True
 
     - name: Set elevator=noop in grub.conf if elevator=anticipatory|deadline|cfq
       replace: dest=/boot/grub/grub.conf regexp='^(.*?)\s*(?:elevator=(?:anticipatory|deadline|cfq)) *\s(.*)' replace='\1 elevator=noop \2'
-      # lineinfile: dest=/boot/grub/grub.conf backrefs=yes state=present regexp='^^(.*?)\s*(?:KEYBOARDTYPE=(?:pc|mac)) *\s(.*)' line='\1 elevator=noop \2'
       when: elevator_noop is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
 
     - name: Set elevator=noop in grub.conf if elevator= is not set
