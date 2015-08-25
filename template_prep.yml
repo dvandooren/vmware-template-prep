@@ -17,15 +17,10 @@
       when: (ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6) or ansible_os_family == "Debian"
       register: auditd_service
       failed_when: auditd_service.failed == True and auditd_service.msg is defined and 'no service' not in auditd_service.msg
-      tags: test
-
-    - debug: var=auditd_service
-      tags: test
 
     - name: Stop auditd service
       command: /usr/libexec/initscripts/legacy-actions/auditd/stop
       when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
-      tags: test
 
     - name: Backup /etc/yum.conf
       shell: cp -pf /etc/yum.conf /root/yum.conf.backup
