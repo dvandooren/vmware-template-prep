@@ -2,8 +2,11 @@
 # Based off the great "Preparing Linux Template VMs"
 # (http://lonesysadmin.net/2013/03/26/preparing-linux-template-vms/) article
 
-# CentOS 6.6
-export PREFIX="/sbin"
+if [ -x /usr/sbin/vgdisplay ]; then
+  export PREFIX="/usr/sbin/"
+else
+  export PREFIX="/sbin/"
+fi
 
 FileSystem=`grep ext /etc/mtab| awk -F" " '{ print $2 }'`
 
