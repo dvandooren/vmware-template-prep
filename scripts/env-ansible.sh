@@ -12,7 +12,7 @@ if [ $# -lt 1 ]; then
 	echo "You must specify the project name to load the inventory and variable files for."
 	echo "     ie. $0 sample"
 	echo
-	echo "The variable files must be named <PROJECT>.config and <PROJECT>.secret"
+	echo "The variable files must be named <PROJECT>.config"
 	echo "The inventory file must be named <PROJECT>.hosts"
 	exit 1
 fi
@@ -22,7 +22,7 @@ function info() {
 }
 
 # Discover the variable files.
-VARS="-e @envs/$1.config -e @envs/$1.secret"
+VARS="-e @envs/$1.config"
 INV="-i envs/$1.hosts"
 
 # Shift the command line varibles to pass along to ansible-playbook
