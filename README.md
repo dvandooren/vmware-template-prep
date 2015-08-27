@@ -1,4 +1,4 @@
-# Ansible Playbook - Template Prep
+# Ansible Playbook - VMware Template Prep
 
 This playbook prepares a VM so that it can be turned into a template. The steps in the playbook are largely based on the following aritcle by Bob Plankers:
 [Preparing Linux Template VMs](https://lonesysadmin.net/2013/03/26/preparing-linux-template-vms/)
