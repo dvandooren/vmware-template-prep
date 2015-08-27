@@ -253,7 +253,7 @@
 
     - name: backup rc.local
       command: cp /etc/rc.local /etc/rc.local.orig
-      when: ansible_os_family == "Debian"
+      when: ansible_os_family == "Debian" and disable_clear_ssh_keys is not defined
 
     - name: Recreate ssh keys on next boot
       command: sed -i '$ i dpkg-reconfigure openssh-server\nmv /etc/rc.local.orig /etc/rc.local' /etc/rc.local
@@ -274,3 +274,7 @@
     - name: Remove ssh host keys and shutdown VM
       shell: nohup bash -c "/bin/rm -f /etc/ssh/*key*; sleep 2 && shutdown -h now" &
       when: disable_shutdown is not defined and disable_clear_ssh_keys is not defined
+
+    - name: REMINDER MESSAGES
+      debug: msg="Remember to Storage vMotion VM to re-thin the VM"
+      when: disable_shutdown is not defined and run_zero_out_disk is defined
