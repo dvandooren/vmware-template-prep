@@ -6,7 +6,7 @@
 
 - hosts: template_vm
   remote_user: root
-  sudo: yes
+#  sudo: yes
 #  no_log: True
   tasks:
     - name: Stop rsyslog service
@@ -48,15 +48,15 @@
 
     - name: Copy over vmware.repo
       copy: src=files/vmware.repo dest=/etc/yum.repos.d/vmware.repo owner=root group=root mode=0644
-      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 5
 
     - name: Ensure VMware tools is installed and the latest version
       yum: name=vmware-tools-esx-nox state=latest
-      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 6
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int <= 5
 
     - name: Ensure open-vm-tools is installed and the latest version
       yum: name=open-vm-tools state=latest
-      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
+      when: install_vmwaretools is defined and ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 6
 
     - name: Ensure open-vm-tools is installed and the latest version
       apt: name=open-vm-tools state=latest
@@ -85,7 +85,14 @@
       service: name=sysstat enabled=no
       when: disable_sysstat is defined
       register: sysstat_service
-      failed_when: sysstat_service.failed == True and sysstat_service.msg is defined and 'no service' not in sysstat_service.msg
+      when: ansible_os_family != "RedHat" or (ansible_os_family == "RedHat" and ansible_distribution_major_version|int < 7)
+
+    - name: Disable sysstat
+      service: name=sysstat enabled=no
+      when: disable_sysstat is defined
+      register: sysstat_service
+      failed_when: sysstat_service.failed == True and sysstat_service.msg is defined and 'Could not find' not in sysstat_service.msg
+      when: ansible_os_family == "RedHat" and ansible_distribution_major_version|int >= 7
 
     - name: Disable the cron.d/sysstat file
       copy: src=files/sysstat.crond dest=/etc/cron.d/sysstat owner=root group=root mode=0644
